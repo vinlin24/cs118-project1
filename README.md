@@ -10,6 +10,8 @@ This project is a basic HTTP server, designed to handle requests by either servi
 
 - **server.c**: The main server code containing the logic for handling HTTP requests, parsing arguments, and serving/proxying content.
 - **makefile**: The build system for compiling and cleaning the project.
+- **index.html**: A video player page used for testing the serving of local HTML content. It instructs the browser to request the output.m3u8 video manifest.
+- **output.m3u8**: A video manifest used for testing the serving of local content. It contains information about video chunks and instructs the browser to request `.ts` video chunks, which are hosted on our remote video server.
 
 ## Build Instructions
 
