@@ -299,7 +299,7 @@ void serve_local_file(int client_socket, const char *path)
     }
     else if (!(strcmp(extension, ".txt")))
     {
-        // Sets content-type to text/txt.
+        // Sets content-type to text/plain.
         // Concatenates different parts of the response.
 
         char response1[] = "HTTP/1.0 200 OK\r\n"
