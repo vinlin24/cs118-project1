@@ -303,7 +303,7 @@ void serve_local_file(int client_socket, const char *path)
         // Concatenates different parts of the response.
 
         char response1[] = "HTTP/1.0 200 OK\r\n"
-                           "Content-Type: text/txt; charset=UTF-8\r\n"
+                           "Content-Type: text/plain; charset=UTF-8\r\n"
                            "Content-Length: ";
 
         char response[strlen(response1) + strlen(response2) + file_size + 10];
