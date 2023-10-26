@@ -116,7 +116,7 @@ static void proxy_remote_file(struct server_app *app,
                               const char *path);
 
 /**
- * Send an HTTP 502 Bad Gatway response to a socket.
+ * Send an HTTP 502 Bad Gateway response to a socket.
  */
 static void send_bad_gateway(sockfd_t sockfd);
 
