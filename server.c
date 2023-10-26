@@ -17,7 +17,9 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#define BUFFER_SIZE 1024
+#define REQUEST_BUFFER_SIZE 1024
+#define RESPONSE_BUFFER_SIZE 65536
+
 #define DEFAULT_SERVER_PORT 8081
 #define DEFAULT_REMOTE_HOST "131.179.176.34"
 #define DEFAULT_REMOTE_PORT 5001
@@ -70,10 +72,9 @@ static void serve_local_file(sockfd_t client_socket, const char *path);
  * Forward an HTTP request from the client to the remote video server, also
  * forwarding its HTTP response back to the client.
  */
-static void proxy_remote_file(
-    struct server_app *app,
-    sockfd_t client_socket,
-    const char *path);
+static void proxy_remote_file(struct server_app *app,
+                              sockfd_t client_socket,
+                              const char *path);
 
 /**
  * Send an HTTP 502 Bad Gatway response to a socket.
@@ -86,19 +87,16 @@ static void send_bad_gateway(sockfd_t sockfd);
 int main(int argc, char *argv[])
 {
     struct server_app app;
-    int server_socket, client_socket;
-    struct sockaddr_in server_addr, client_addr;
-    socklen_t client_len;
-
     parse_args(argc, argv, &app);
 
-    server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    sockfd_t server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket == -1)
     {
         perror("socket failed");
         exit(EXIT_FAILURE);
     }
 
+    struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = INADDR_ANY;
     server_addr.sin_port = htons(app.server_port);
@@ -106,9 +104,15 @@ int main(int argc, char *argv[])
     // The following allows the program to immediately bind to the port in case
     // previous run exits recently.
     int optval = 1;
-    setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+    setsockopt(server_socket,
+               SOL_SOCKET,
+               SO_REUSEADDR,
+               &optval,
+               sizeof(optval));
 
-    if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1)
+    if (bind(server_socket,
+             (struct sockaddr *)&server_addr,
+             sizeof(server_addr)) == -1)
     {
         perror("bind failed");
         exit(EXIT_FAILURE);
@@ -122,16 +126,24 @@ int main(int argc, char *argv[])
 
     printf("Server listening on port %d\n", app.server_port);
 
-    while (1)
+    while (true)
     {
-        client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_len);
+        socklen_t client_len;
+        struct sockaddr_in client_addr;
+        sockfd_t client_socket = accept(server_socket,
+                                        (struct sockaddr *)&client_addr,
+                                        &client_len);
+
         if (client_socket == -1)
         {
             perror("accept failed");
             continue;
         }
 
-        printf("Accepted connection from %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+        printf("Accepted connection from %s:%d\n",
+               inet_ntoa(client_addr.sin_addr),
+               ntohs(client_addr.sin_port));
+
         handle_request(&app, client_socket);
         close(client_socket);
     }
@@ -142,12 +154,15 @@ int main(int argc, char *argv[])
 
 static void parse_args(int argc, char *argv[], struct server_app *app)
 {
-    int opt;
-
     app->server_port = DEFAULT_SERVER_PORT;
     app->remote_host = NULL;
     app->remote_port = DEFAULT_REMOTE_PORT;
 
+    const char usage[] = "Usage: server "
+                         "[-b local_port] "
+                         "[-r remote_host] "
+                         "[-p remote_port]";
+    int opt;
     while ((opt = getopt(argc, argv, "b:r:p:")) != -1)
     {
         switch (opt)
@@ -161,8 +176,9 @@ static void parse_args(int argc, char *argv[], struct server_app *app)
         case 'p':
             app->remote_port = atoi(optarg);
             break;
-        default: /* Unrecognized parameter or "-?" */
-            fprintf(stderr, "Usage: server [-b local_port] [-r remote_host] [-p remote_port]\n");
+        // Unrecognized parameter of "-?"
+        default:
+            fprintf(stderr, "%s\n", usage);
             exit(-1);
             break;
         }
@@ -176,22 +192,21 @@ static void parse_args(int argc, char *argv[], struct server_app *app)
 
 static void handle_request(struct server_app *app, sockfd_t client_socket)
 {
-    char buffer[BUFFER_SIZE];
-    ssize_t bytes_read;
-
     // Read the request from HTTP client.
     //
     // NOTE: This code is not ideal in the real world because it assumes that
     // the request header is small enough and can be read once as a whole.
     // However, the current version suffices for our testing.
-    bytes_read = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
+
+    char buffer[REQUEST_BUFFER_SIZE];
+    ssize_t bytes_read = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
     if (bytes_read <= 0)
     {
         return; // Connection closed or error.
     }
 
+    // Copy buffer to a new string.
     buffer[bytes_read] = '\0';
-    // copy buffer to a new string
     char *request = malloc(strlen(buffer) + 1);
     strcpy(request, buffer);
 
@@ -246,8 +261,8 @@ static void handle_request(struct server_app *app, sockfd_t client_socket)
     }
 
     // Extract file extension (assumed to start at the last occurrence of '.').
-    const char *extension = strrchr(file_name, '.');
 
+    const char *extension = strrchr(file_name, '.');
     if (STRING_EQUALS(extension, ".ts"))
         proxy_remote_file(app, client_socket, request);
     else
@@ -315,9 +330,10 @@ static void serve_local_file(sockfd_t client_socket, const char *path)
         // Sets content-type to application/octet-stream. Concatenates different
         // parts of the response.
 
-        char response1[] = "HTTP/1.0 200 OK\r\n"
-                           "Content-Type: application/octet-stream; charset=UTF-8\r\n"
-                           "Content-Length: ";
+        char response1[] =
+            "HTTP/1.0 200 OK\r\n"
+            "Content-Type: application/octet-stream; charset=UTF-8\r\n"
+            "Content-Length: ";
 
         send(client_socket, response1, strlen(response1), 0);
         send(client_socket, response2, strlen(response2), 0);
@@ -329,9 +345,10 @@ static void serve_local_file(sockfd_t client_socket, const char *path)
         // Sets content-type to text/html. Concatenates different parts of the
         // response.
 
-        char response1[] = "HTTP/1.0 200 OK\r\n"
-                           "Content-Type: text/html; charset=UTF-8\r\n"
-                           "Content-Length: ";
+        char response1[] =
+            "HTTP/1.0 200 OK\r\n"
+            "Content-Type: text/html; charset=UTF-8\r\n"
+            "Content-Length: ";
 
         char response[strlen(response1) + strlen(response2) + file_size + 10];
 
@@ -347,9 +364,10 @@ static void serve_local_file(sockfd_t client_socket, const char *path)
         // Sets content-type to text/plain. Concatenates different parts of the
         // response.
 
-        char response1[] = "HTTP/1.0 200 OK\r\n"
-                           "Content-Type: text/plain; charset=UTF-8\r\n"
-                           "Content-Length: ";
+        char response1[] =
+            "HTTP/1.0 200 OK\r\n"
+            "Content-Type: text/plain; charset=UTF-8\r\n"
+            "Content-Length: ";
 
         char response[strlen(response1) + strlen(response2) + file_size + 10];
 
@@ -365,9 +383,10 @@ static void serve_local_file(sockfd_t client_socket, const char *path)
         // Sets content-type to image/jpeg. Concatenates different parts of the
         // response.
 
-        char response1[] = "HTTP/1.0 200 OK\r\n"
-                           "Content-Type: image/jpeg; charset=UTF-8\r\n"
-                           "Content-Length: ";
+        char response1[] =
+            "HTTP/1.0 200 OK\r\n"
+            "Content-Type: image/jpeg; charset=UTF-8\r\n"
+            "Content-Length: ";
 
         send(client_socket, response1, strlen(response1), 0);
         send(client_socket, response2, strlen(response2), 0);
@@ -379,9 +398,10 @@ static void serve_local_file(sockfd_t client_socket, const char *path)
         // Sets content-type to application/octet-stream. Concatenates different
         // parts of the response.
 
-        char response1[] = "HTTP/1.0 200 OK\r\n"
-                           "Content-Type: application/octet-stream; charset=UTF-8\r\n"
-                           "Content-Length: ";
+        char response1[] =
+            "HTTP/1.0 200 OK\r\n"
+            "Content-Type: application/octet-stream; charset=UTF-8\r\n"
+            "Content-Length: ";
 
         send(client_socket, response1, strlen(response1), 0);
         send(client_socket, response2, strlen(response2), 0);
@@ -390,10 +410,9 @@ static void serve_local_file(sockfd_t client_socket, const char *path)
     }
 }
 
-static void proxy_remote_file(
-    struct server_app *app,
-    sockfd_t client_socket,
-    const char *request)
+static void proxy_remote_file(struct server_app *app,
+                              sockfd_t client_socket,
+                              const char *request)
 {
     printf("Proxying to remote video server.\n");
 
@@ -439,9 +458,8 @@ static void proxy_remote_file(
         goto cleanup;
     }
 
-    // Receive response from video server.
-    char response[65536];
-    while (1)
+    char response[RESPONSE_BUFFER_SIZE];
+    while (true)
     {
         ssize_t bytes_received = recv(server_socket,
                                       response,
