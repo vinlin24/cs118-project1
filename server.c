@@ -92,6 +92,12 @@ static void parse_args(int argc, char *argv[], struct server_app *app);
 static inline const char *extract_file_extension(const char *path);
 
 /**
+ * Convert %20 and %25 from a URL-encoded filename to the space and % characters
+ * respectively, in-place.
+ */
+static void decode_url_file_name(char *file_name);
+
+/**
  * Handle an incoming HTTP request from a client application.
  */
 static void handle_request(struct server_app *app, sockfd_t client_socket);
@@ -228,6 +234,31 @@ static inline const char *extract_file_extension(const char *path)
     return strrchr(path, '.');
 }
 
+static void decode_url_file_name(char *file_name)
+{
+    size_t length = strlen(file_name);
+    for (size_t i = 0; i + 2 < length; i++)
+    {
+        if (file_name[i] == '%' && file_name[i + 1] == '2')
+        {
+            if (file_name[i + 2] == '0')
+            {
+                file_name[i] = ' ';
+                memmove(&file_name[i + 1],
+                        &file_name[i + 3],
+                        strlen(&file_name[i + 3]) + 1);
+            }
+            else if (file_name[i + 2] == '5')
+            {
+                file_name[i] = '%';
+                memmove(&file_name[i + 1],
+                        &file_name[i + 3],
+                        strlen(&file_name[i + 3]) + 1);
+            }
+        }
+    }
+}
+
 static void handle_request(struct server_app *app, sockfd_t client_socket)
 {
     // Read the request from HTTP client.
@@ -241,10 +272,9 @@ static void handle_request(struct server_app *app, sockfd_t client_socket)
                               buffer,
                               sizeof(buffer) - 1,
                               NO_FLAGS);
+    // Connection closed or error.
     if (bytes_read <= 0)
-    {
-        return; // Connection closed or error.
-    }
+        return;
 
     // Copy buffer to a new string.
     buffer[bytes_read] = '\0';
@@ -270,36 +300,10 @@ static void handle_request(struct server_app *app, sockfd_t client_socket)
     file_name[characters_in_file_name] = '\0';
 
     // If the requested path is "/" (root), defaults to index.html.
-
     if (strlen(file_name) == 0)
-    {
         strcpy(file_name, "index.html");
-    }
-
     else
-    {
-        // Converts %20 and %25 from url-encoding to space and % respectively.
-
-        for (size_t i = 0; i < strlen(file_name) - 2; i++)
-        {
-            if (file_name[i] == '%')
-            {
-                if (file_name[i + 1] == '2')
-                {
-                    if (file_name[i + 2] == '0')
-                    {
-                        file_name[i] = ' ';
-                        memmove(&file_name[i + 1], &file_name[i + 3], strlen(&file_name[i + 3]) + 1);
-                    }
-                    else if (file_name[i + 2] == '5')
-                    {
-                        file_name[i] = '%';
-                        memmove(&file_name[i + 1], &file_name[i + 3], strlen(&file_name[i + 3]) + 1);
-                    }
-                }
-            }
-        }
-    }
+        decode_url_file_name(file_name);
 
     const char *extension = extract_file_extension(file_name);
     if (extension && STRING_EQUALS(extension, ".ts"))
