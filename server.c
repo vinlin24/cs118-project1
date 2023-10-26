@@ -405,20 +405,28 @@ void proxy_remote_file(struct server_app *app, int client_socket, const char *re
     }
 
     // Receive response from video server.
-    char response[BUFFER_SIZE];
-    ssize_t bytes_received = recv(server_socket, response, sizeof(response), 0);
-    if (bytes_received == -1)
+    char response[65536];
+    while (1)
     {
-        fprintf(stderr, "recv() from video server failed\n");
-        send_bad_gateway(client_socket);
-        goto cleanup;
-    }
+        ssize_t bytes_received = recv(server_socket,
+                                      response,
+                                      sizeof(response),
+                                      0);
+        if (bytes_received == -1)
+        {
+            fprintf(stderr, "recv() from video server failed\n");
+            send_bad_gateway(client_socket);
+            goto cleanup;
+        }
+        if (bytes_received == 0)
+            break;
 
-    // Forward response to original client.
-    if (send(client_socket, response, bytes_received, 0) == -1)
-    {
-        perror("send failed");
-        goto cleanup;
+        // Forward response to original client.
+        if (send(client_socket, response, bytes_received, 0) == -1)
+        {
+            perror("send failed");
+            goto cleanup;
+        }
     }
 
 cleanup:
