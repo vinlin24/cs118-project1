@@ -53,3 +53,6 @@ dkms.conf
 
 # Compiled binaries
 server
+
+# Generated files for submission
+*.zip

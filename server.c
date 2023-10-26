@@ -30,6 +30,16 @@ struct server_app
     uint16_t remote_port;
 };
 
+/**
+ * Readable alias for an integer representing a socket file descriptor.
+ */
+typedef int sockfd_t;
+
+/**
+ * Readable alias for using strcmp to check C-string equality.
+ */
+#define STRING_EQUALS(s1, s2) ((s1) && (s2) && strcmp((s1), (s2)) == 0)
+
 // The following function is implemented for you and doesn't need
 // to be change
 void parse_args(int argc, char *argv[], struct server_app *app);
@@ -39,6 +49,8 @@ void handle_request(struct server_app *app, int client_socket);
 void serve_local_file(int client_socket, const char *path);
 void proxy_remote_file(struct server_app *app, int client_socket, const char *path);
 
+static void send_bad_gateway(sockfd_t sockfd);
+
 // The main function is provided and no change is needed
 int main(int argc, char *argv[])
 {
@@ -46,7 +58,6 @@ int main(int argc, char *argv[])
     int server_socket, client_socket;
     struct sockaddr_in server_addr, client_addr;
     socklen_t client_len;
-    int ret;
 
     parse_args(argc, argv, &app);
 
@@ -203,17 +214,19 @@ void handle_request(struct server_app *app, int client_socket)
         }
     }
 
-    // TODO: Implement proxy and call the function under condition
-    // specified in the spec
-    // if (need_proxy(...)) {
-    //    proxy_remote_file(app, client_socket, file_name);
-    // } else {
-    serve_local_file(client_socket, file_name);
-    //}
+    // Extract file extension (assumed to start at the last occurrence of '.').
+    const char *extension = strrchr(file_name, '.');
+
+    if (STRING_EQUALS(extension, ".ts"))
+        proxy_remote_file(app, client_socket, request);
+    else
+        serve_local_file(client_socket, file_name);
 }
 
 void serve_local_file(int client_socket, const char *path)
 {
+    printf("Serving %s from local filesystem.\n", path);
+
     // TODO: Properly implement serving of local files
     // The following code returns a dummy response for all requests
     // but it should give you a rough idea about what a proper response looks like
@@ -347,6 +360,8 @@ void serve_local_file(int client_socket, const char *path)
 
 void proxy_remote_file(struct server_app *app, int client_socket, const char *request)
 {
+    printf("Proxying to remote video server.\n");
+
     // TODO: Implement proxy request and replace the following code
     // What's needed:
     // * Connect to remote server (app->remote_server/app->remote_port)
@@ -356,6 +371,70 @@ void proxy_remote_file(struct server_app *app, int client_socket, const char *re
     // * When connection to the remote server fail, properly generate
     // HTTP 502 "Bad Gateway" response
 
-    char response[] = "HTTP/1.0 501 Not Implemented\r\n\r\n";
-    send(client_socket, response, strlen(response), 0);
+    // Initialize a new socket, where we're now acting as the client for the
+    // backend video server.
+    sockfd_t server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_socket == -1)
+    {
+        perror("socket failed");
+        goto cleanup;
+    }
+
+    struct sockaddr_in server_address;
+    server_address.sin_family = AF_INET;
+    server_address.sin_addr.s_addr = inet_addr(app->remote_host);
+    server_address.sin_port = htons(app->remote_port);
+
+    // Connect new server_socket to the video server's socket. If it fails, we
+    // send HTTP 502 Bad Gateway back to the original client.
+    if (connect(server_socket,
+                (struct sockaddr *)&server_address,
+                sizeof(server_address)) != 0)
+    {
+        fprintf(stderr, "connect() to video server failed\n");
+        send_bad_gateway(client_socket);
+        goto cleanup;
+    }
+
+    // Forward request to video server.
+    if (send(server_socket, request, strlen(request), 0) == -1)
+    {
+        fprintf(stderr, "send() to video server failed\n");
+        send_bad_gateway(client_socket);
+        goto cleanup;
+    }
+
+    // Receive response from video server.
+    char response[65536];
+    while (1)
+    {
+        ssize_t bytes_received = recv(server_socket,
+                                      response,
+                                      sizeof(response),
+                                      0);
+        if (bytes_received == -1)
+        {
+            fprintf(stderr, "recv() from video server failed\n");
+            send_bad_gateway(client_socket);
+            goto cleanup;
+        }
+        if (bytes_received == 0)
+            break;
+
+        // Forward response to original client.
+        if (send(client_socket, response, bytes_received, 0) == -1)
+        {
+            perror("send failed");
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    close(server_socket);
+}
+
+static void send_bad_gateway(sockfd_t sockfd)
+{
+    char response[] = "HTTP/1.0 502 Bad Gateway\r\n\r\n";
+    send(sockfd, response, sizeof(response), 0);
 }
