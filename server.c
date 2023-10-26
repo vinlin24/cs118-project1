@@ -1,32 +1,43 @@
+/**
+ * @file
+ * @brief UCLA F23 COM SCI 118 Project 1: Web Server Implementation.
+ *
+ * @authors Snigdha Kansal
+ *          Vincent Lin
+ */
+
+#include <arpa/inet.h>
+#include <getopt.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <getopt.h>
-#include <arpa/inet.h>
+#include <string.h>
 #include <sys/socket.h>
-
-/**
- * Project 1 starter code
- * All parts needed to be changed/added are marked with TODO
- */
+#include <unistd.h>
 
 #define BUFFER_SIZE 1024
 #define DEFAULT_SERVER_PORT 8081
 #define DEFAULT_REMOTE_HOST "131.179.176.34"
 #define DEFAULT_REMOTE_PORT 5001
 
+/**
+ * Represents a server application.
+ */
 struct server_app
 {
-    // Parameters of the server
-    // Local port of HTTP server
+    /**
+     * Local port of HTTP server.
+     */
     uint16_t server_port;
-
-    // Remote host and port of remote proxy
+    /**
+     * Remote host of remote proxy.
+     */
     char *remote_host;
+    /**
+     * Remote port of remote proxy.
+     */
     uint16_t remote_port;
 };
 
@@ -40,18 +51,38 @@ typedef int sockfd_t;
  */
 #define STRING_EQUALS(s1, s2) ((s1) && (s2) && strcmp((s1), (s2)) == 0)
 
-// The following function is implemented for you and doesn't need
-// to be change
-void parse_args(int argc, char *argv[], struct server_app *app);
+/**
+ * Parse command line arguments to initialize the server application.
+ */
+static void parse_args(int argc, char *argv[], struct server_app *app);
 
-// The following functions need to be updated
-void handle_request(struct server_app *app, int client_socket);
-void serve_local_file(int client_socket, const char *path);
-void proxy_remote_file(struct server_app *app, int client_socket, const char *path);
+/**
+ * Handle an incoming HTTP request from a client application.
+ */
+static void handle_request(struct server_app *app, sockfd_t client_socket);
 
+/**
+ * Send a file from the local filesystem via an HTTP response to the client.
+ */
+static void serve_local_file(sockfd_t client_socket, const char *path);
+
+/**
+ * Forward an HTTP request from the client to the remote video server, also
+ * forwarding its HTTP response back to the client.
+ */
+static void proxy_remote_file(
+    struct server_app *app,
+    sockfd_t client_socket,
+    const char *path);
+
+/**
+ * Send an HTTP 502 Bad Gatway response to a socket.
+ */
 static void send_bad_gateway(sockfd_t sockfd);
 
-// The main function is provided and no change is needed
+/**
+ * Main driver function.
+ */
 int main(int argc, char *argv[])
 {
     struct server_app app;
@@ -73,7 +104,7 @@ int main(int argc, char *argv[])
     server_addr.sin_port = htons(app.server_port);
 
     // The following allows the program to immediately bind to the port in case
-    // previous run exits recently
+    // previous run exits recently.
     int optval = 1;
     setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
 
@@ -109,7 +140,7 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-void parse_args(int argc, char *argv[], struct server_app *app)
+static void parse_args(int argc, char *argv[], struct server_app *app)
 {
     int opt;
 
@@ -143,20 +174,20 @@ void parse_args(int argc, char *argv[], struct server_app *app)
     }
 }
 
-void handle_request(struct server_app *app, int client_socket)
+static void handle_request(struct server_app *app, sockfd_t client_socket)
 {
     char buffer[BUFFER_SIZE];
     ssize_t bytes_read;
 
-    // Read the request from HTTP client
-    // Note: This code is not ideal in the real world because it
-    // assumes that the request header is small enough and can be read
-    // once as a whole.
+    // Read the request from HTTP client.
+    //
+    // NOTE: This code is not ideal in the real world because it assumes that
+    // the request header is small enough and can be read once as a whole.
     // However, the current version suffices for our testing.
     bytes_read = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
     if (bytes_read <= 0)
     {
-        return; // Connection closed or error
+        return; // Connection closed or error.
     }
 
     buffer[bytes_read] = '\0';
@@ -164,8 +195,8 @@ void handle_request(struct server_app *app, int client_socket)
     char *request = malloc(strlen(buffer) + 1);
     strcpy(request, buffer);
 
-    // TODO: Parse the header and extract essential fields, e.g. file name
-    // Hint: if the requested path is "/" (root), default to index.html
+    // Parse the header and extract essential fields, e.g. file name. If the
+    // requested path is "/" (root), default to index.html.
 
     // Iterates over HTTP request to find length of file name for extraction.
 
@@ -182,7 +213,7 @@ void handle_request(struct server_app *app, int client_socket)
     strncpy(file_name, request + 5, characters_in_file_name);
     file_name[characters_in_file_name] = '\0';
 
-    // If the requested path is "/" (root), defaults to index.html
+    // If the requested path is "/" (root), defaults to index.html.
 
     if (strlen(file_name) == 0)
     {
@@ -223,26 +254,25 @@ void handle_request(struct server_app *app, int client_socket)
         serve_local_file(client_socket, file_name);
 }
 
-void serve_local_file(int client_socket, const char *path)
+static void serve_local_file(sockfd_t client_socket, const char *path)
 {
     printf("Serving %s from local filesystem.\n", path);
 
-    // TODO: Properly implement serving of local files
-    // The following code returns a dummy response for all requests
-    // but it should give you a rough idea about what a proper response looks like
-    // What you need to do
-    // (when the requested file exists):
-    // * Open the requested file
-    // * Build proper response headers (see details in the spec), and send them
-    // * Also send file content
-    // (When the requested file does not exist):
-    // * Generate a correct response
+    // Serving of local files:
+    //  * Open the requested file.
+    //  * Build proper response headers (see details in the spec), and send
+    //    them.
+    //  * Also send file content
+    //
+    // When the requested file does not exist:
+    //  * Generate a correct response.
 
     // Tries to open requested file at path.
 
     FILE *file = fopen(path, "r");
 
-    // If file does not exist, responds with a message saying "Requested file does not exist.".
+    // If file does not exist, responds with a message saying "Requested file
+    // does not exist.".
 
     if (file == NULL)
     {
@@ -266,7 +296,8 @@ void serve_local_file(int client_socket, const char *path)
     fread(content, 1, file_size, file);
     fclose(file);
 
-    // Converts file_size from size_t to string to append to HTTP response message.
+    // Converts file_size from size_t to string to append to HTTP response
+    // message.
 
     char response2[sizeof(size_t)];
     sprintf(response2, "%ld", file_size);
@@ -275,13 +306,14 @@ void serve_local_file(int client_socket, const char *path)
 
     const char *extension = strrchr(path, '.');
 
-    // Following checks respond accordingly based on extension of file which include cases of:
-    // no extension, .html extension, .txt extension, and .jpg extension
+    // Following checks respond accordingly based on extension of file which
+    // include cases of: no extension, .html extension, .txt extension, and .jpg
+    // extension.
 
     if (!extension)
     {
-        // Sets content-type to application/octet-stream.
-        // Concatenates different parts of the response.
+        // Sets content-type to application/octet-stream. Concatenates different
+        // parts of the response.
 
         char response1[] = "HTTP/1.0 200 OK\r\n"
                            "Content-Type: application/octet-stream; charset=UTF-8\r\n"
@@ -294,8 +326,8 @@ void serve_local_file(int client_socket, const char *path)
     }
     else if (!(strcmp(extension, ".html")))
     {
-        // Sets content-type to text/html.
-        // Concatenates different parts of the response.
+        // Sets content-type to text/html. Concatenates different parts of the
+        // response.
 
         char response1[] = "HTTP/1.0 200 OK\r\n"
                            "Content-Type: text/html; charset=UTF-8\r\n"
@@ -312,8 +344,8 @@ void serve_local_file(int client_socket, const char *path)
     }
     else if (!(strcmp(extension, ".txt")))
     {
-        // Sets content-type to text/plain.
-        // Concatenates different parts of the response.
+        // Sets content-type to text/plain. Concatenates different parts of the
+        // response.
 
         char response1[] = "HTTP/1.0 200 OK\r\n"
                            "Content-Type: text/plain; charset=UTF-8\r\n"
@@ -330,8 +362,8 @@ void serve_local_file(int client_socket, const char *path)
     }
     else if (!(strcmp(extension, ".jpg")))
     {
-        // Sets content-type to image/jpeg.
-        // Concatenates different parts of the response.
+        // Sets content-type to image/jpeg. Concatenates different parts of the
+        // response.
 
         char response1[] = "HTTP/1.0 200 OK\r\n"
                            "Content-Type: image/jpeg; charset=UTF-8\r\n"
@@ -344,8 +376,8 @@ void serve_local_file(int client_socket, const char *path)
     }
     else
     {
-        // Sets content-type to application/octet-stream.
-        // Concatenates different parts of the response.
+        // Sets content-type to application/octet-stream. Concatenates different
+        // parts of the response.
 
         char response1[] = "HTTP/1.0 200 OK\r\n"
                            "Content-Type: application/octet-stream; charset=UTF-8\r\n"
@@ -358,18 +390,21 @@ void serve_local_file(int client_socket, const char *path)
     }
 }
 
-void proxy_remote_file(struct server_app *app, int client_socket, const char *request)
+static void proxy_remote_file(
+    struct server_app *app,
+    sockfd_t client_socket,
+    const char *request)
 {
     printf("Proxying to remote video server.\n");
 
-    // TODO: Implement proxy request and replace the following code
-    // What's needed:
-    // * Connect to remote server (app->remote_server/app->remote_port)
-    // * Forward the original request to the remote server
-    // * Pass the response from remote server back
+    // Proxying a request:
+    //  * Connect to remote server (app->remote_host/app->remote_port).
+    //  * Forward the original request to the remote server.
+    //  * Pass the response from remote server back.
+    //
     // Bonus:
-    // * When connection to the remote server fail, properly generate
-    // HTTP 502 "Bad Gateway" response
+    //  * When connection to the remote server fail, properly generate HTTP 502
+    //    "Bad Gateway" response.
 
     // Initialize a new socket, where we're now acting as the client for the
     // backend video server.
