@@ -38,7 +38,7 @@ typedef int sockfd_t;
 /**
  * Readable alias for using strcmp to check C-string equality.
  */
-#define STRING_EQUALS(s1, s2) (strcmp((s1), (s2)) == 0)
+#define STRING_EQUALS(s1, s2) ((s1) && (s2) && strcmp((s1), (s2)) == 0)
 
 // The following function is implemented for you and doesn't need
 // to be change
