@@ -17,12 +17,43 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+/**
+ * Buffer size for an HTTP request.
+ */
 #define REQUEST_BUFFER_SIZE 1024
+/**
+ * Buffer size for an HTTP response.
+ */
 #define RESPONSE_BUFFER_SIZE 65536
 
+/**
+ * Default port to run this web server on.
+ */
 #define DEFAULT_SERVER_PORT 8081
+/**
+ * Hostname of the remote video server. This is provided in the handout and
+ * should not be changed.
+ */
 #define DEFAULT_REMOTE_HOST "131.179.176.34"
+/**
+ * Port of the remote video server. This is provided in the handout and should
+ * not be changed as the server's firewall is set to only allow traffic through
+ * this port. Repeated attempts outside of this port may cause an IP ban.
+ */
 #define DEFAULT_REMOTE_PORT 5001
+
+/**
+ * Readable alias for passing in 0 as an argument representing bit flags.
+ */
+#define NO_FLAGS 0
+/**
+ * Readable alias for the automatic protocol argument to socket().
+ */
+#define AUTO_PROTOCOL 0
+/**
+ * Readable alias for using strcmp to check C-string equality.
+ */
+#define STRING_EQUALS(s1, s2) (strcmp((s1), (s2)) == 0)
 
 /**
  * Represents a server application.
@@ -36,7 +67,7 @@ struct server_app
     /**
      * Remote host of remote proxy.
      */
-    char *remote_host;
+    const char *remote_host;
     /**
      * Remote port of remote proxy.
      */
@@ -47,21 +78,6 @@ struct server_app
  * Readable alias for an integer representing a socket file descriptor.
  */
 typedef int sockfd_t;
-
-/**
- * Readable alias for using strcmp to check C-string equality.
- */
-#define STRING_EQUALS(s1, s2) (strcmp((s1), (s2)) == 0)
-
-/**
- * Readable alias for passing in 0 as an argument representing bit flags.
- */
-#define NO_FLAGS 0
-
-/**
- * Readable alias for the automatic protocol argument to socket().
- */
-#define AUTO_PROTOCOL 0
 
 /**
  * Parse command line arguments to initialize the server application.
