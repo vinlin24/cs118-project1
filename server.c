@@ -35,6 +35,11 @@ struct server_app
  */
 typedef int sockfd_t;
 
+/**
+ * Readable alias for using strcmp to check C-string equality.
+ */
+#define STRING_EQUALS(s1, s2) (strcmp((s1), (s2)) == 0)
+
 // The following function is implemented for you and doesn't need
 // to be change
 void parse_args(int argc, char *argv[], struct server_app *app);
@@ -209,20 +214,19 @@ void handle_request(struct server_app *app, int client_socket)
         }
     }
 
-    // TODO: Implement proxy and call the function under condition
-    // specified in the spec
-    // if (need_proxy(...)) {
-    //    proxy_remote_file(app, client_socket, file_name);
-    // } else {
-    serve_local_file(client_socket, file_name);
-    //}
+    // Extract file extension (assumed to start at the last occurrence of '.').
+    const char *extension = strrchr(file_name, '.');
 
-    // TODO: this line is just to quell -Wpedantic on "unused parameter app".
-    fprintf(stderr, "IGNORE: %p\n", (void *)app);
+    if (STRING_EQUALS(extension, ".ts"))
+        proxy_remote_file(app, client_socket, request);
+    else
+        serve_local_file(client_socket, file_name);
 }
 
 void serve_local_file(int client_socket, const char *path)
 {
+    printf("Serving %s from local filesystem.\n", path);
+
     // TODO: Properly implement serving of local files
     // The following code returns a dummy response for all requests
     // but it should give you a rough idea about what a proper response looks like
@@ -356,6 +360,8 @@ void serve_local_file(int client_socket, const char *path)
 
 void proxy_remote_file(struct server_app *app, int client_socket, const char *request)
 {
+    printf("Proxying to remote video server.\n");
+
     // TODO: Implement proxy request and replace the following code
     // What's needed:
     // * Connect to remote server (app->remote_server/app->remote_port)
