@@ -43,10 +43,6 @@
 #define DEFAULT_REMOTE_PORT 5001
 
 /**
- * Readable alias for passing in 0 as an argument representing bit flags.
- */
-#define NO_FLAGS 0
-/**
  * Readable alias for the automatic protocol argument to socket().
  */
 #define AUTO_PROTOCOL 0
@@ -268,10 +264,7 @@ static void handle_request(struct server_app *app, sockfd_t client_socket)
     // However, the current version suffices for our testing.
 
     char buffer[REQUEST_BUFFER_SIZE];
-    ssize_t bytes_read = recv(client_socket,
-                              buffer,
-                              sizeof(buffer) - 1,
-                              NO_FLAGS);
+    ssize_t bytes_read = read(client_socket, buffer, sizeof(buffer) - 1);
     // Connection closed or error.
     if (bytes_read <= 0)
         return;
@@ -340,7 +333,7 @@ static void serve_local_file(sockfd_t client_socket, const char *path)
                           "\r\n"
                           "Requested file does not exist."
                           "\r\n\r\n";
-        send(client_socket, response, strlen(response), NO_FLAGS);
+        write(client_socket, response, strlen(response));
         return;
     }
 
@@ -376,10 +369,10 @@ static void serve_local_file(sockfd_t client_socket, const char *path)
             "Content-Type: application/octet-stream; charset=UTF-8\r\n"
             "Content-Length: ";
 
-        send(client_socket, response1, strlen(response1), NO_FLAGS);
-        send(client_socket, response2, strlen(response2), NO_FLAGS);
-        send(client_socket, "\r\n\r\n", 4, NO_FLAGS);
-        send(client_socket, content, file_size, NO_FLAGS);
+        write(client_socket, response1, strlen(response1));
+        write(client_socket, response2, strlen(response2));
+        write(client_socket, "\r\n\r\n", 4);
+        write(client_socket, content, file_size);
     }
     else if (STRING_EQUALS(extension, ".html"))
     {
@@ -398,7 +391,7 @@ static void serve_local_file(sockfd_t client_socket, const char *path)
         strcat(response, "\r\n\r\n");
         strcat(response, content);
 
-        send(client_socket, response, strlen(response), NO_FLAGS);
+        write(client_socket, response, strlen(response));
     }
     else if (STRING_EQUALS(extension, ".txt"))
     {
@@ -417,7 +410,7 @@ static void serve_local_file(sockfd_t client_socket, const char *path)
         strcat(response, "\r\n\r\n");
         strcat(response, content);
 
-        send(client_socket, response, strlen(response), NO_FLAGS);
+        write(client_socket, response, strlen(response));
     }
     else if (STRING_EQUALS(extension, ".jpg"))
     {
@@ -429,10 +422,10 @@ static void serve_local_file(sockfd_t client_socket, const char *path)
             "Content-Type: image/jpeg; charset=UTF-8\r\n"
             "Content-Length: ";
 
-        send(client_socket, response1, strlen(response1), NO_FLAGS);
-        send(client_socket, response2, strlen(response2), NO_FLAGS);
-        send(client_socket, "\r\n\r\n", 4, NO_FLAGS);
-        send(client_socket, content, file_size, NO_FLAGS);
+        write(client_socket, response1, strlen(response1));
+        write(client_socket, response2, strlen(response2));
+        write(client_socket, "\r\n\r\n", 4);
+        write(client_socket, content, file_size);
     }
     else
     {
@@ -444,10 +437,10 @@ static void serve_local_file(sockfd_t client_socket, const char *path)
             "Content-Type: application/octet-stream; charset=UTF-8\r\n"
             "Content-Length: ";
 
-        send(client_socket, response1, strlen(response1), NO_FLAGS);
-        send(client_socket, response2, strlen(response2), NO_FLAGS);
-        send(client_socket, "\r\n\r\n", 4, NO_FLAGS);
-        send(client_socket, content, file_size, NO_FLAGS);
+        write(client_socket, response1, strlen(response1));
+        write(client_socket, response2, strlen(response2));
+        write(client_socket, "\r\n\r\n", 4);
+        write(client_socket, content, file_size);
     }
 }
 
@@ -493,9 +486,9 @@ static void proxy_remote_file(struct server_app *app,
     }
 
     // Forward request to video server.
-    if (send(server_socket, request, strlen(request), NO_FLAGS) == -1)
+    if (write(server_socket, request, strlen(request)) == -1)
     {
-        fprintf(stderr, "send() to video server failed\n");
+        fprintf(stderr, "write() to video server failed\n");
         send_bad_gateway(client_socket);
         goto cleanup;
     }
@@ -503,13 +496,12 @@ static void proxy_remote_file(struct server_app *app,
     char response[RESPONSE_BUFFER_SIZE];
     while (true)
     {
-        ssize_t bytes_received = recv(server_socket,
+        ssize_t bytes_received = read(server_socket,
                                       response,
-                                      sizeof(response),
-                                      NO_FLAGS);
+                                      sizeof(response));
         if (bytes_received == -1)
         {
-            fprintf(stderr, "recv() from video server failed\n");
+            fprintf(stderr, "read() from video server failed\n");
             send_bad_gateway(client_socket);
             goto cleanup;
         }
@@ -517,9 +509,9 @@ static void proxy_remote_file(struct server_app *app,
             break;
 
         // Forward response to original client.
-        if (send(client_socket, response, bytes_received, NO_FLAGS) == -1)
+        if (write(client_socket, response, bytes_received) == -1)
         {
-            perror("send failed");
+            perror("write failed");
             goto cleanup;
         }
     }
@@ -531,6 +523,6 @@ cleanup:
 static void send_bad_gateway(sockfd_t sockfd)
 {
     char response[] = "HTTP/1.0 502 Bad Gateway\r\n\r\n";
-    if (send(sockfd, response, sizeof(response), NO_FLAGS) == -1)
-        perror("send in send_bad_gateway failed");
+    if (write(sockfd, response, sizeof(response)) == -1)
+        perror("write in send_bad_gateway failed");
 }
